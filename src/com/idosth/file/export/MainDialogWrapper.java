@@ -1,7 +1,7 @@
 package com.idosth.file.export;
 
 import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.actionSystem.DataKeys;
+import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.fileChooser.FileChooser;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.project.Project;
@@ -37,7 +37,7 @@ public class MainDialogWrapper extends JDialog {
 
     MainDialogWrapper(AnActionEvent event) {
         this.event = event;
-        this.setTitle("Export");
+        this.setTitle("导出");
         //初始默认选中导出文件带目录结构
         structureRadio.setSelected(true);
         //设置内容Panel
@@ -54,12 +54,12 @@ public class MainDialogWrapper extends JDialog {
         String outputPath = pathEditText.getText();
         // 条件校验
         if (null == outputPath || "".equals(outputPath)) {
-            Messages.showErrorDialog(this, "Please Select Save Path!", "Error");
+            Messages.showErrorDialog(this, "请选择导出路径！", "错误信息");
             return;
         }
         ListModel<VirtualFile> fileListModel = fieldList.getModel();
         if (fileListModel.getSize() == 0) {
-            Messages.showErrorDialog(this, "Please Select Export File!", "Error");
+            // 若没选择需要导出的文件则不做任何事情
             return;
         }
         try {
@@ -68,26 +68,17 @@ public class MainDialogWrapper extends JDialog {
                 File sourceFile = new File(file.getPath());
                 //判断是否需要导出文件目录
                 if (structureRadio.isSelected()) {
-                    //获取当前项目路径
-                    Project project = event.getProject();
-                    if (project != null && project.getBasePath() != null) {
-
-                        String[] paths = sourceFile.getCanonicalPath().split("\\\\" + project.getName() + "\\\\");
-                        if (paths.length > 1) {
-                            File targetFile = new File(outputPath + "/" + project.getName() + "/" + paths[1]);
-                            FileUtil.copy(sourceFile, targetFile);
-                        }
-                    }
+                    copyFileWithStructure(sourceFile, outputPath);
                 } else if (onlyFileRadio.isSelected()) {
-                    File targetFile = new File(outputPath + "/" + sourceFile.getName());
-                    FileUtil.copy(sourceFile, targetFile);
+                    copyFileNoStructure(sourceFile, outputPath);
                 }
             }
         } catch (IOException e) {
             Messages.showErrorDialog(this, "程序出错，请联系作者！", "Error");
-            return;
+            throw new RuntimeException(e);
+        } finally {
+            dispose();
         }
-        dispose();
     }
 
     private void onCancel() {
@@ -131,16 +122,44 @@ public class MainDialogWrapper extends JDialog {
      */
     private void createUIComponents() {
         //获取选中的虚拟文件
-        VirtualFile[] data = event.getData(DataKeys.VIRTUAL_FILE_ARRAY);
+        VirtualFile[] data = event.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY);
         List<VirtualFile> fileList = new ArrayList<>();
         for (VirtualFile datum : data) {
-            if (!datum.isDirectory()) {
-                fileList.add(datum);
-            }
+            fileList.add(datum);
         }
         fieldList = new JBList(fileList);
-        fieldList.setEmptyText("No File Selected!");
+        fieldList.setEmptyText("请先选择需要导出的文件!");
         ToolbarDecorator decorator = ToolbarDecorator.createDecorator(fieldList);
         fileListPanel = decorator.createPanel();
     }
+
+    /**
+     * 带结构的导出方法
+     * @param sourceFile 源文件
+     * @param outputPath 输出目录
+     * @throws IOException
+     */
+    private void copyFileWithStructure(File sourceFile, String outputPath) throws IOException {
+        Project project = event.getProject();
+        if (project != null && project.getBasePath() != null) {
+            String structureString = sourceFile.getCanonicalPath().substring(project.getBasePath().length());
+            if (structureString.length() > 1) {
+                File targetFile = new File(outputPath + File.separator + project.getName() + File.separator + structureString);
+                FileUtil.copyFileOrDir(sourceFile, targetFile);
+            }
+        }
+    }
+
+    /**
+     * 不带结构的导出方法
+     * @param sourceFile 源文件
+     * @param outputPath 输出目录
+     * @throws IOException
+     */
+    private void copyFileNoStructure(File sourceFile, String outputPath) throws IOException {
+        File targetFile = new File(outputPath + File.separator + sourceFile.getName());
+        FileUtil.copyFileOrDir(sourceFile, targetFile);
+    }
+
+
 }
